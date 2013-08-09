@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+# chkconfig: - 55 45
+# description:  The memcached daemon is a network memory cache service.
+# processname: memcached
+### END INIT INFO
+
+# Usage:
+# cp /etc/sysconfig/memcached /etc/sysconfig/memcached_server1
+# cp /etc/sysconfig/memcached /etc/sysconfig/memcached_server2
+# start all instances:
+# /etc/init.d/memcached start
+# start one instance:
+# /etc/init.d/memcached start server1
+# stop all instances:
+# /etc/init.d/memcached stop
+# stop one instance:
+# /etc/init.d/memcached stop server1
+
+# Source function library.
+. /etc/init.d/functions
+
+if [ -f /etc/sysconfig/memcached ]
+then
+  . /etc/sysconfig/memcached
+fi
+
+# Check that networking is up.
+. /etc/sysconfig/network
+
+if [ "$NETWORKING" = "no" ]
+then
+  exit 0
+fi
+
+RETVAL=0
+RETVALTOTAL=0
+
+start () {
+  echo -n $"Starting $prog: "
+  # Ensure that /var/run/memcached has proper permissions
+  if [ "`stat -c %U /var/run/memcached`" != "$USER" ]; then
+    chown $USER /var/run/memcached
+  fi
+
+  daemon --pidfile ${pidfile} memcached -d -p $PORT -u $USER  -m $CACHESIZE -c $MAXCONN -P ${pidfile} $OPTIONS
+  RETVAL=$?
+  echo
+  [ $RETVAL -eq 0 ] && touch ${lockfile}
+}
+
+stop () {
+  echo -n $"Stopping $prog: "
+  killproc -p ${pidfile} /usr/bin/memcached
+  RETVAL=$?
+  echo
+  if [ $RETVAL -eq 0 ]
+  then
+    rm -f ${lockfile} ${pidfile}
+  fi
+}
+
+restart () {
+  stop
+  start
+}
+
+FILES=(/etc/sysconfig/memcached_*)
+# check for alternative config schema
+if [ -r "${FILES[0]}" ]
+then
+  CONFIGS=(memcached)
+  for FILE in "${FILES[@]}"
+  do
+    # remove prefix
+    NAME=${FILE#/etc/sysconfig/}
+
+    # check optional second param
+    if [ $# -ne 2 ]
+    then
+      # add to config array
+      CONFIGS+=($NAME)
+    elif [ "memcached_$2" == "$NAME" ]
+    then
+      # use only one memcached
+      CONFIGS=($NAME)
+      break
+    elif [ "$2" == "memcached" ]
+    then
+      break
+    fi
+  done
+
+  if [ ${#CONFIGS[@]} == 0 ]
+  then
+    NAME=${2-memcached}
+    echo "Config not exist for: $NAME" >&2
+    exit 1
+  fi
+else
+  CONFIGS=(memcached)
+fi
+
+CONFIG_NUM=${#CONFIGS[@]}
+for ((i=0; i < $CONFIG_NUM; i++))
+do
+  # Resetting defaults so that a config file with missing parameters won't
+  # inherit the parameters of the previous instance
+  PORT=11211
+  USER=memcached
+  MAXCONN=1024
+  CACHESIZE=64
+  OPTIONS=""
+
+  NAME=${CONFIGS[${i}]}
+  prog=${CONFIGS[${i}]}
+  pidfile="/var/run/memcached/${NAME}.pid"
+  lockfile="/var/lock/subsys/${NAME}"
+  RETVAL=0
+  . /etc/sysconfig/${NAME}
+
+  # See how we were called.
+  case "$1" in
+    start)
+      start
+      ;;
+    stop)
+      stop
+      ;;
+    status)
+      status -p ${pidfile} ${prog}
+      RETVAL=$?
+      ;;
+    restart|reload|force-reload)
+      restart
+      ;;
+    condrestart|try-restart)
+      [ -f ${lockfile} ] && restart || :
+      ;;
+    *)
+      echo $"Usage: $0 {start|stop|status|restart|reload|force-reload|condrestart|try-restart} [instance]"
+      RETVAL=2
+      exit 1
+  esac
+  [ $RETVAL -eq 0 ] || RETVALTOTAL=$RETVAL
+done
+
+exit $RETVALTOTAL
