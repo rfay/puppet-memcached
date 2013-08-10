@@ -22,7 +22,7 @@ Install with non-default settings:
     class {"memcached":
       enabled => true,
       port    => 11211,
-      listen  => 127.0.0.1,
+      listen  => "127.0.0.1",
       size    => 64,
       conn    => 1024,
       user    => "memcached",
@@ -43,7 +43,7 @@ Advanced:
 
     memcached::instance { "additional_1":
       port    => 11211,
-      listen  => 127.0.0.1,
+      listen  => "127.0.0.1",
       size    => 64,
       conn    => 1024,
       user    => "memcached",
